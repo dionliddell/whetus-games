@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fire Tag</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden; /* Prevent scrolling */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #3a0000 0%, #1a0000 100%);
+        }
+
+        #game-container {
+            position: relative;
+            /* Container will be sized by JS */
+            box-shadow: 0 0 30px rgba(255, 69, 0, 0.4);
+            border-radius: 8px;
+            background-color: #222;
+            overflow: hidden;
+            border: 4px solid #5a1a1a;
+        }
+
+        .grid-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: grid;
+            /* Grid template defined in JS */
+        }
+
+        .block {
+            background-color: #ff8c00;
+            border: 1px solid #d2691e;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+            transition: background-color 0.2s, transform 0.2s, opacity 0.5s;
+            border-radius: 4px;
+        }
+
+        .block.stepped {
+            background-color: #ff0000;
+            transform: scale(0.95);
+        }
+
+        .block.falling {
+            opacity: 0;
+            transform: translateY(20px) scale(0.8);
+        }
+
+        .block.empty {
+            background-color: transparent;
+            border: none;
+            box-shadow: none;
+        }
+
+        #player {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-color: #fff;
+            border-radius: 50%;
+            z-index: 10;
+            transition: top 0.1s linear, left 0.1s linear;
+            box-shadow: 0 0 15px #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #player::after {
+            content: '🔥';
+            font-size: 1.5em;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+
+        .screen {
+            background: rgba(0, 0, 0, 0.85);
+            padding: 2rem;
+            border-radius: 12px;
+            text-align: center;
+            pointer-events: auto;
+            border: 2px solid #ff4500;
+            box-shadow: 0 0 20px #ff4500;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        button {
+            background: linear-gradient(to bottom, #ff8c00, #ff0000);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1.2rem;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 1rem;
+            transition: transform 0.1s, box-shadow 0.1s;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(255, 69, 0, 0.8);
+        }
+        
+        #score-display {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #ff8c00;
+            z-index: 15;
+            text-shadow: 2px 2px 4px #000;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            color: #ff4500;
+            text-shadow: 0 0 10px #ff0000;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        p {
+            font-size: 1.2rem;
+            color: #ddd;
+            margin-bottom: 1rem;
+        }
+        
+        .controls-info {
+            font-size: 0.9rem;
+            color: #aaa;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="score-display">Score: 0</div>
+    
+    <div id="game-container">
+        <div id="grid" class="grid-layer"></div>
+        <!-- Player is added dynamically -->
+    </div>
+
+    <div id="ui-layer">
+        <div id="start-screen" class="screen">
+            <h1>Fire Tag</h1>
+            <p>Run over blocks before they burn away!</p>
+            <p>Don't fall into the abyss.</p>
+            <button id="start-btn">Start Game</button>
+            <div class="controls-info">Use Arrow Keys or W,A,S,D to move</div>
+        </div>
+
+        <div id="game-over-screen" class="screen hidden">
+            <h1>Burned Out!</h1>
+            <p id="final-score">Score: 0</p>
+            <button id="restart-btn">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        const gameContainer = document.getElementById('game-container');
+        const gridElement = document.getElementById('grid');
+        const scoreDisplay = document.getElementById('score-display');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+
+        // Game settings
+        const GRID_SIZE = 12; // 12x12 grid
+        const BLOCK_SIZE = 40; // Pixels
+        const DROP_DELAY = 600; // ms before a stepped block falls
+        const FALL_DURATION = 500; // ms for the falling animation
+
+        // Game state
+        let blocks = []; // 2D array of block elements
+        let playerPos = { x: 0, y: 0 };
+        let playerElement;
+        let score = 0;
+        let gameActive = false;
+        let activeTimers = []; // To clear timeouts on restart
+
+        function initGame() {
+            // Sizing container
+            gameContainer.style.width = `${GRID_SIZE * BLOCK_SIZE}px`;
+            gameContainer.style.height = `${GRID_SIZE * BLOCK_SIZE}px`;
+            
+            // Setting up CSS grid
+            gridElement.style.gridTemplateColumns = `repeat(${GRID_SIZE}, 1fr)`;
+            gridElement.style.gridTemplateRows = `repeat(${GRID_SIZE}, 1fr)`;
+            
+            createGrid();
+            createPlayer();
+            resetGame();
+        }
+
+        function createGrid() {
+            gridElement.innerHTML = '';
+            blocks = [];
+            for (let y = 0; y < GRID_SIZE; y++) {
+                let row = [];
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    const block = document.createElement('div');
+                    block.classList.add('block');
+                    block.dataset.x = x;
+                    block.dataset.y = y;
+                    // Store state: 0=normal, 1=stepped, 2=falling/gone
+                    block.dataset.state = 0; 
+                    gridElement.appendChild(block);
+                    row.push(block);
+                }
+                blocks.push(row);
+            }
+        }
+
+        function createPlayer() {
+            if (playerElement) {
+                playerElement.remove();
+            }
+            playerElement = document.createElement('div');
+            playerElement.id = 'player';
+            // Size relative to block
+            playerElement.style.width = `${BLOCK_SIZE * 0.8}px`;
+            playerElement.style.height = `${BLOCK_SIZE * 0.8}px`;
+            // Offset to center in block
+            playerElement.style.marginLeft = `${BLOCK_SIZE * 0.1}px`;
+            playerElement.style.marginTop = `${BLOCK_SIZE * 0.1}px`;
+            gameContainer.appendChild(playerElement);
+        }
+
+        function resetGame() {
+            score = 0;
+            updateScoreDisplay();
+            
+            // Clear all pending timeouts
+            activeTimers.forEach(timer => clearTimeout(timer));
+            activeTimers = [];
+
+            // Reset blocks
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    const block = blocks[y][x];
+                    block.className = 'block'; // Reset classes
+                    block.dataset.state = 0;
+                }
+            }
+
+            // Random starting position
+            playerPos.x = Math.floor(GRID_SIZE / 2);
+            playerPos.y = Math.floor(GRID_SIZE / 2);
+            updatePlayerVisualPosition();
+            
+            // Ensure starting block is safe initially, but trigger step logic
+            handleBlockStep(playerPos.x, playerPos.y);
+        }
+
+        function updatePlayerVisualPosition() {
+            playerElement.style.left = `${playerPos.x * BLOCK_SIZE}px`;
+            playerElement.style.top = `${playerPos.y * BLOCK_SIZE}px`;
+        }
+
+        function handleBlockStep(x, y) {
+            if (!gameActive) return;
+
+            const block = blocks[y][x];
+            const state = parseInt(block.dataset.state);
+
+            if (state === 2) {
+                // Stepped on a hole! Game over.
+                gameOver();
+                return;
+            }
+
+            if (state === 0) {
+                // Mark as stepped
+                block.dataset.state = 1;
+                block.classList.add('stepped');
+                score += 10;
+                updateScoreDisplay();
+
+                // Start drop timer
+                const dropTimer = setTimeout(() => {
+                    if (!gameActive) return;
+                    
+                    block.dataset.state = 2; // Falling/Gone
+                    block.classList.replace('stepped', 'falling');
+                    
+                    // Check if player is still on this block when it falls
+                    if (playerPos.x === x && playerPos.y === y) {
+                        gameOver();
+                    }
+
+                    // After animation, make it empty
+                    const emptyTimer = setTimeout(() => {
+                         block.classList.replace('falling', 'empty');
+                    }, FALL_DURATION);
+                    activeTimers.push(emptyTimer);
+
+                }, DROP_DELAY);
+                
+                activeTimers.push(dropTimer);
+            }
+        }
+
+        function movePlayer(dx, dy) {
+            if (!gameActive) return;
+
+            const newX = playerPos.x + dx;
+            const newY = playerPos.y + dy;
+
+            // Check bounds
+            if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE) {
+                playerPos.x = newX;
+                playerPos.y = newY;
+                updatePlayerVisualPosition();
+                handleBlockStep(playerPos.x, playerPos.y);
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (!gameActive) return;
+            
+            // Prevent default scrolling for arrow keys
+            if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"].indexOf(e.code) > -1) {
+                e.preventDefault();
+            }
+
+            switch(e.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                    movePlayer(0, -1);
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    movePlayer(0, 1);
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    movePlayer(-1, 0);
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    movePlayer(1, 0);
+                    break;
+            }
+        });
+
+        function updateScoreDisplay() {
+            scoreDisplay.textContent = `Score: ${score}`;
+        }
+
+        function startGame() {
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            resetGame();
+            gameActive = true;
+        }
+
+        function gameOver() {
+            gameActive = false;
+            
+            // Make player fall
+            playerElement.style.transform = 'scale(0) translateY(50px)';
+            playerElement.style.opacity = '0';
+            playerElement.style.transition = 'transform 0.5s, opacity 0.5s';
+
+            setTimeout(() => {
+                finalScoreDisplay.textContent = `Score: ${score}`;
+                gameOverScreen.classList.remove('hidden');
+                
+                // Reset player styles for next game
+                setTimeout(()=>{
+                    playerElement.style.transform = 'none';
+                    playerElement.style.opacity = '1';
+                }, 100);
+            }, 500);
+        }
+
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+        // Initialize on load
+        initGame();
+
+    </script>
+</body>
+</html>

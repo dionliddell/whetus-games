@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wrengen</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --green: #22c55e;
+            --yellow: #eab308;
+            --orange: #f97316;
+            --red: #ef4444;
+            --hole: #020617;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            background: linear-gradient(to right, var(--green), var(--yellow), var(--orange), var(--red));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .score-board {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-top: 0.25rem;
+        }
+
+        #gameCanvas {
+            background-color: var(--hole);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 0 0 2px #1e293b;
+            touch-action: none;
+        }
+
+        .controls-info {
+            margin-top: 1.5rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            line-height: 1.5;
+            max-width: 400px;
+        }
+
+        .key {
+            background-color: #1e293b;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            border: 1px solid #334155;
+            color: var(--text-main);
+            font-family: monospace;
+        }
+
+        /* Mobile Controls */
+        .mobile-controls {
+            display: none;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .mobile-btn {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            color: white;
+            border-radius: 8px;
+            padding: 15px;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .mobile-btn:active {
+            background-color: #334155;
+        }
+
+        .btn-up { grid-column: 2; grid-row: 1; }
+        .btn-left { grid-column: 1; grid-row: 2; }
+        .btn-down { grid-column: 2; grid-row: 2; }
+        .btn-right { grid-column: 3; grid-row: 2; }
+        .btn-jump { grid-column: 1 / span 3; grid-row: 3; font-size: 1rem; padding: 12px; background-color: var(--green); color: #000; font-weight: bold;}
+
+        @media (max-width: 600px) {
+            .mobile-controls { display: grid; }
+            .controls-info { display: none; }
+        }
+
+        /* Modal */
+        #gameOverModal {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        #gameOverModal.visible {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .modal-content {
+            background: #1e293b;
+            padding: 2rem;
+            border-radius: 12px;
+            text-align: center;
+            border: 2px solid var(--red);
+            box-shadow: 0 0 30px rgba(239, 68, 68, 0.2);
+        }
+
+        .modal-content h2 { margin-top: 0; color: var(--red); font-size: 2rem; }
+        .modal-content button {
+            margin-top: 1.5rem;
+            padding: 0.75rem 2rem;
+            background: var(--text-main);
+            color: var(--bg-color);
+            border: none;
+            border-radius: 6px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .modal-content button:hover { background: var(--green); }
+    </style>
+</head>
+<body tabindex="0">
+
+    <div class="header">
+        <h1>Wrengen</h1>
+        <div class="score-board">Level: <span id="levelDisplay">1</span> | Moves: <span id="scoreDisplay">0</span> | High Score: <span id="highScoreDisplay">0</span></div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="controls-info">
+        Move: <span class="key">Arrows</span> | Jump (2 spaces): <span class="key">Spacebar</span><br>
+        <div style="margin-top: 8px;">
+            <span style="color: var(--green);">Green</span> → 
+            <span style="color: var(--yellow);">Yellow</span> → 
+            <span style="color: var(--orange);">Orange</span> → 
+            <span style="color: var(--red);">Red (Fall!)</span>
+        </div>
+    </div>
+
+    <div class="mobile-controls">
+        <div class="mobile-btn btn-up" id="btnUp">▲</div>
+        <div class="mobile-btn btn-left" id="btnLeft">◀</div>
+        <div class="mobile-btn btn-down" id="btnDown">▼</div>
+        <div class="mobile-btn btn-right" id="btnRight">▶</div>
+        <div class="mobile-btn btn-jump" id="btnJump">JUMP</div>
+    </div>
+
+    <div id="gameOverModal">
+        <div class="modal-content">
+            <h2 id="gameOverTitle">YOU FELL!</h2>
+            <p id="gameOverText">You survived <strong>0</strong> moves.</p>
+            <button id="modalButton">Try Again</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const levelDisplay = document.getElementById('levelDisplay');
+        const modal = document.getElementById('gameOverModal');
+        const modalButton = document.getElementById('modalButton');
+        const highScoreDisplay = document.getElementById('highScoreDisplay');
+
+        // Game Configuration
+        let currentLevel = 1;
+        let COLS = 11;
+        let ROWS = 11;
+        let tileSize = 40;
+        let padding = 4; // Space between tiles
+
+        // Colors mapping to states
+        const COLORS = {
+            0: '#22c55e', // Green
+            1: '#eab308', // Yellow
+            2: '#f97316', // Orange
+            3: '#ef4444', // Red (Fatal)
+            4: '#020617'  // Broken/Hole
+        };
+
+        // Game State
+        let grid = [];
+        let player = {
+            x: 0,
+            y: 0,
+            dirX: 1, // Facing direction for jumping
+            dirY: 0,
+            scale: 1, // For falling animation
+            isDead: false
+        };
+        let enemy = {
+            x: 0,
+            y: 0,
+            scale: 1,
+            isDead: false
+        };
+        let score = 0;
+        let highScore = 0;
+        let gameState = 'START'; // START, PLAYING, GAMEOVER
+        let animationId;
+
+        // Resize Canvas dynamically
+        function resizeCanvas() {
+            // Find best fit for width/height
+            const maxWidth = window.innerWidth * 0.95;
+            const maxHeight = window.innerHeight * 0.55;
+            
+            tileSize = Math.floor(Math.min(maxWidth / COLS, maxHeight / ROWS));
+            if (tileSize < 4) tileSize = 4; // Reduced minimum size for infinite levels
+            if (tileSize > 50) tileSize = 50; // Maximum size
+
+            canvas.width = COLS * tileSize;
+            canvas.height = ROWS * tileSize;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        function resetGame() {
+            currentLevel = 1;
+            score = 0;
+            startLevel();
+        }
+
+        function startLevel() {
+            COLS = 7 + (currentLevel * 4);
+            ROWS = 7 + (currentLevel * 4);
+            resizeCanvas();
+            
+            // Initialize Grid with 0 (Green)
+            grid = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+            
+            // Start in middle
+            player.x = Math.floor(COLS / 2);
+            player.y = Math.floor(ROWS / 2);
+            player.dirX = 0;
+            player.dirY = -1; // Face up initially
+            player.scale = 1;
+            player.isDead = false;
+
+            // Start enemy in top-left
+            enemy.x = 0;
+            enemy.y = 0;
+            enemy.scale = 1;
+            enemy.isDead = false;
+
+            // First tile is touched immediately
+            grid[player.y][player.x] = 1;
+            grid[enemy.y][enemy.x] = 1;
+
+            levelDisplay.textContent = currentLevel;
+            scoreDisplay.textContent = score;
+            gameState = 'PLAYING';
+            modal.classList.remove('visible');
+
+            if (animationId) cancelAnimationFrame(animationId);
+            gameLoop();
+        }
+
+        function handleInput(dx, dy, isJump = false) {
+            if (gameState !== 'PLAYING' || player.isDead) return;
+
+            // Update facing direction
+            if (!isJump) {
+                player.dirX = dx;
+                player.dirY = dy;
+            }
+
+            const stepMultiplier = isJump ? 2 : 1;
+            const targetX = player.x + (dx * stepMultiplier);
+            const targetY = player.y + (dy * stepMultiplier);
+
+            // Boundary check
+            if (targetX < 0 || targetX >= COLS || targetY < 0 || targetY >= ROWS) {
+                return; // Hit wall
+            }
+
+            // Move player
+            player.x = targetX;
+            player.y = targetY;
+            score++;
+            scoreDisplay.textContent = score;
+            if (score > highScore) {
+                highScore = score;
+                highScoreDisplay.textContent = highScore;
+            }
+
+            // Touch the new tile
+            const currentTileState = grid[player.y][player.x];
+            
+            // If already red or hole, immediately fall
+            if (currentTileState >= 3) {
+                triggerGameOver();
+                return;
+            }
+
+            // Increment tile state
+            grid[player.y][player.x]++;
+
+            // Check if it just turned red
+            if (grid[player.y][player.x] === 3) {
+                triggerGameOver();
+                return;
+            }
+
+            if (!enemy.isDead && gameState === 'PLAYING') {
+                moveEnemy();
+            }
+        }
+
+        function triggerGameOver() {
+            player.isDead = true;
+            gameState = 'GAMEOVER';
+            
+            // Turn the tile into a hole
+            grid[player.y][player.x] = 4;
+
+            // Show modal after a short falling animation
+            setTimeout(() => {
+                const title = document.getElementById('gameOverTitle');
+                title.textContent = 'YOU FELL!';
+                title.style.color = 'var(--red)';
+                document.getElementById('gameOverText').innerHTML = `You reached Level ${currentLevel} and survived <strong>${score}</strong> moves.`;
+                modalButton.textContent = 'Try Again';
+                modalButton.onclick = resetGame;
+                modal.classList.add('visible');
+            }, 1000);
+        }
+
+        function moveEnemy() {
+            const moves = [
+                {dx: 0, dy: -1}, {dx: 0, dy: 1},
+                {dx: -1, dy: 0}, {dx: 1, dy: 0}
+            ];
+
+            let validMoves = [];
+            for (let m of moves) {
+                let tx = enemy.x + m.dx;
+                let ty = enemy.y + m.dy;
+                if (tx >= 0 && tx < COLS && ty >= 0 && ty < ROWS) {
+                    let tileState = grid[ty][tx];
+                    if (tileState < 3) { 
+                        validMoves.push({x: tx, y: ty, state: tileState});
+                    }
+                }
+            }
+
+            if (validMoves.length === 0) {
+                triggerEnemyDeath();
+                return;
+            }
+
+            validMoves.sort((a, b) => {
+                // Prefer non-fatal moves (state < 2) over fatal ones (state 2)
+                let aFatal = a.state === 2;
+                let bFatal = b.state === 2;
+                if (aFatal && !bFatal) return 1;
+                if (!aFatal && bFatal) return -1;
+
+                // Sort by Manhattan distance to player
+                let distA = Math.abs(a.x - player.x) + Math.abs(a.y - player.y);
+                let distB = Math.abs(b.x - player.x) + Math.abs(b.y - player.y);
+                return distA - distB;
+            });
+
+            const bestMove = validMoves[0];
+            enemy.x = bestMove.x;
+            enemy.y = bestMove.y;
+
+            grid[enemy.y][enemy.x]++;
+
+            if (grid[enemy.y][enemy.x] === 3) {
+                triggerEnemyDeath();
+            }
+        }
+
+        function triggerEnemyDeath() {
+            enemy.isDead = true;
+            gameState = 'GAMEOVER';
+            grid[enemy.y][enemy.x] = 4; // Turn to hole
+
+            setTimeout(() => {
+                const title = document.getElementById('gameOverTitle');
+                title.textContent = 'LEVEL CLEARED!';
+                title.style.color = 'var(--green)';
+                document.getElementById('gameOverText').innerHTML = `You beat Level ${currentLevel} in <strong>${score}</strong> total moves!<br><br>Ready for a bigger challenge?`;
+                currentLevel++;
+                modalButton.textContent = 'Next Level';
+                modalButton.onclick = startLevel;
+                modal.classList.add('visible');
+            }, 1000);
+        }
+
+        // Keyboard Controls
+        document.addEventListener('keydown', (e) => {
+            // Prevent default scrolling for arrows and space
+            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
+                e.preventDefault();
+            }
+
+            if (gameState === 'GAMEOVER' && e.key === 'Enter') {
+                modalButton.click();
+                return;
+            }
+
+            switch(e.key) {
+                case 'ArrowUp': case 'w': case 'W': handleInput(0, -1); break;
+                case 'ArrowDown': case 's': case 'S': handleInput(0, 1); break;
+                case 'ArrowLeft': case 'a': case 'A': handleInput(-1, 0); break;
+                case 'ArrowRight': case 'd': case 'D': handleInput(1, 0); break;
+                case ' ': handleInput(player.dirX, player.dirY, true); break;
+            }
+        });
+
+        // Touch / Click Controls mapping
+        document.getElementById('btnUp').addEventListener('pointerdown', (e) => { e.preventDefault(); handleInput(0, -1); });
+        document.getElementById('btnDown').addEventListener('pointerdown', (e) => { e.preventDefault(); handleInput(0, 1); });
+        document.getElementById('btnLeft').addEventListener('pointerdown', (e) => { e.preventDefault(); handleInput(-1, 0); });
+        document.getElementById('btnRight').addEventListener('pointerdown', (e) => { e.preventDefault(); handleInput(1, 0); });
+        document.getElementById('btnJump').addEventListener('pointerdown', (e) => { e.preventDefault(); handleInput(player.dirX, player.dirY, true); });
+
+        // Render functions
+        function drawTile(x, y, state) {
+            const screenX = x * tileSize + padding;
+            const screenY = y * tileSize + padding;
+            const size = tileSize - (padding * 2);
+
+            ctx.fillStyle = COLORS[state];
+            
+            // Draw tile base with rounded corners
+            ctx.beginPath();
+            ctx.roundRect(screenX, screenY, size, size, 6);
+            ctx.fill();
+
+            // Inner styling for depth
+            if (state < 4) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(screenX + 2, screenY + 2, size - 4, size - 4);
+            }
+        }
+
+        function drawPlayer(timestamp) {
+            if (player.isDead) {
+                // Falling animation: shrink and fade
+                player.scale = Math.max(0, player.scale - 0.05);
+            }
+
+            if (player.scale <= 0) return;
+
+            const centerX = player.x * tileSize + (tileSize / 2);
+            const centerY = player.y * tileSize + (tileSize / 2);
+            const radius = (tileSize * 0.35) * player.scale;
+
+            // Player body (Pulsing effect)
+            const pulse = player.isDead ? 0 : Math.sin(timestamp / 150) * 2;
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius + pulse, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+
+            // Player shadow/glow
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#ffffff';
+            ctx.fill();
+            ctx.shadowBlur = 0; // reset
+
+            // Direction Indicator (Beak)
+            const beakLength = radius * 1.5;
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(centerX + player.dirX * beakLength, centerY + player.dirY * beakLength);
+            ctx.strokeStyle = '#0f172a';
+            ctx.lineWidth = 3 * player.scale;
+            ctx.stroke();
+        }
+
+        function drawEnemy(timestamp) {
+            if (enemy.isDead) {
+                enemy.scale = Math.max(0, enemy.scale - 0.05);
+            }
+
+            if (enemy.scale <= 0) return;
+
+            const centerX = enemy.x * tileSize + (tileSize / 2);
+            const centerY = enemy.y * tileSize + (tileSize / 2);
+            const radius = (tileSize * 0.3) * enemy.scale;
+
+            const pulse = enemy.isDead ? 0 : Math.cos(timestamp / 150) * 2;
+            
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY - radius - pulse);
+            ctx.lineTo(centerX + radius + pulse, centerY);
+            ctx.lineTo(centerX, centerY + radius + pulse);
+            ctx.lineTo(centerX - radius - pulse, centerY);
+            ctx.closePath();
+
+            ctx.fillStyle = '#ef4444'; 
+            ctx.fill();
+
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#ef4444';
+            ctx.fill();
+            ctx.shadowBlur = 0; 
+        }
+
+        function gameLoop(timestamp) {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Grid
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    drawTile(x, y, grid[y][x]);
+                }
+            }
+
+            // Draw Enemy
+            drawEnemy(timestamp || 0);
+
+            // Draw Player
+            drawPlayer(timestamp || 0);
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // Initialize
+        resetGame();
+
+        // Ensure the game frame captures keyboard focus
+        window.focus();
+        document.body.focus();
+        
+        // Regain focus if the user clicks anywhere in the game area
+        document.addEventListener('pointerdown', () => {
+            window.focus();
+            document.body.focus();
+        });
+    </script>
+</body>
+</html>
